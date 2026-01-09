@@ -30,7 +30,7 @@ export default function TipVaultLogo({
       transition: {
         delay: i * 0.08,
         duration: 0.8,
-        ease: [0.16, 1, 0.3, 1],
+        ease: [0.16, 1, 0.3, 1] as const,
       },
     }),
   };
@@ -42,7 +42,7 @@ export default function TipVaultLogo({
       transition: {
         duration: 3,
         repeat: Infinity,
-        ease: "easeInOut",
+        ease: "easeInOut" as const,
       },
     },
   };
@@ -117,7 +117,7 @@ export default function TipVaultLogo({
                 duration: 3,
                 repeat: Infinity,
                 repeatDelay: 2,
-                ease: "easeInOut",
+                ease: "easeInOut" as const,
               }}
             />
           </motion.div>
