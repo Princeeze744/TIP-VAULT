@@ -10,27 +10,27 @@ export async function GET(request: NextRequest) {
   
   // Get the origin from the request URL (will be production URL on Railway)
   const origin = requestUrl.origin;
-
+  
   // Handle errors
   if (error) {
     console.error("Auth error:", error, error_description);
     return NextResponse.redirect(`${origin}/login?error=${error}`);
   }
-
+  
   if (code) {
     try {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
-
+      
       const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-
+      
       if (exchangeError) {
         console.error("Code exchange error:", exchangeError);
         return NextResponse.redirect(`${origin}/login?error=auth_failed`);
       }
-
+      
       if (data.user) {
         // Check if user is admin
         const { data: profile } = await supabase
@@ -38,11 +38,11 @@ export async function GET(request: NextRequest) {
           .select("account_type")
           .eq("id", data.user.id)
           .single();
-
+        
         if (profile?.account_type === "admin") {
           return NextResponse.redirect(`${origin}/admin`);
         }
-
+        
         return NextResponse.redirect(`${origin}/dashboard`);
       }
     } catch (err) {
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}/login?error=auth_failed`);
     }
   }
-
+  
   // No code provided, redirect to login
   return NextResponse.redirect(`${origin}/login`);
 }
