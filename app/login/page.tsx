@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Lock, Mail, Eye, EyeOff, ChevronDown, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, user } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -16,13 +19,63 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Handle OAuth callback with hash fragment
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      // Check if there's a hash in the URL (OAuth callback)
+      if (window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        
+        if (accessToken) {
+          console.log('OAuth callback detected, processing...');
+          setGoogleLoading(true);
+          
+          try {
+            // Get the session to verify it worked
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error) {
+              console.error('Session error:', error);
+              setError('Authentication failed. Please try again.');
+              setGoogleLoading(false);
+              return;
+            }
+            
+            if (session?.user) {
+              console.log('Session verified, redirecting to dashboard...');
+              // Clear the hash from URL
+              window.history.replaceState(null, '', '/login');
+              // Redirect to dashboard
+              router.push('/dashboard');
+            }
+          } catch (err) {
+            console.error('OAuth processing error:', err);
+            setError('Authentication failed. Please try again.');
+            setGoogleLoading(false);
+          }
+        }
+      }
+    };
+
+    handleOAuthCallback();
+  }, [router]);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !window.location.hash) {
+      console.log('User already logged in, redirecting to dashboard...');
+      router.push('/dashboard');
+    }
+  }, [user, router]);
+
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      const { error } = await signIn(email, password);
+      const { error, isAdmin } = await signIn(email, password);
       if (error) {
         if (error.message.includes("Email not confirmed")) {
           setError("Please verify your email before logging in.");
@@ -30,6 +83,13 @@ export default function LoginPage() {
           setError("Invalid email or password.");
         } else {
           setError(error.message);
+        }
+      } else {
+        // Successful login - redirect
+        if (isAdmin) {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
         }
       }
     } catch (err) {
@@ -44,6 +104,7 @@ export default function LoginPage() {
     setError("");
     try {
       await signInWithGoogle();
+      // Don't set loading to false here - the page will redirect
     } catch (err) {
       setError("Google sign in failed. Please try again.");
       setGoogleLoading(false);
