@@ -22,12 +22,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper to get the correct base URL
-const getBaseUrl = () => {
-  if (typeof window !== "undefined") {
-    return window.location.origin;
+// HARDCODED production URL to fix OAuth redirect
+const PRODUCTION_URL = "https://tip-vault-production.up.railway.app";
+
+const getRedirectUrl = () => {
+  // In production, always use production URL
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+    return `${window.location.origin}/auth/callback`;
   }
-  return process.env.NEXT_PUBLIC_SITE_URL || "https://tip-vault-production.up.railway.app";
+  // For local development, use localhost
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/callback`;
+  }
+  // Fallback to production
+  return `${PRODUCTION_URL}/auth/callback`;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -163,7 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const baseUrl = getBaseUrl();
+      const redirectUrl = getRedirectUrl();
+      console.log("SignUp redirectTo:", redirectUrl);
       
       const { data, error } = await supabase.auth.signUp({
         email: email.toLowerCase().trim(),
@@ -172,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             full_name: fullName.trim(),
           },
-          emailRedirectTo: `${baseUrl}/auth/callback`,
+          emailRedirectTo: redirectUrl,
         },
       });
 
@@ -225,13 +234,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const baseUrl = getBaseUrl();
-      console.log("Google OAuth redirectTo:", `${baseUrl}/auth/callback`);
+      const redirectUrl = getRedirectUrl();
+      console.log("Google OAuth redirectTo:", redirectUrl);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${baseUrl}/auth/callback`,
+          redirectTo: redirectUrl,
           queryParams: {
             access_type: "offline",
             prompt: "consent",
@@ -247,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
-      const baseUrl = getBaseUrl();
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : PRODUCTION_URL;
       
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${baseUrl}/auth/reset-password`,
