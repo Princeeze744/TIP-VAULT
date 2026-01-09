@@ -22,6 +22,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper to get the correct base URL
+const getBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return process.env.NEXT_PUBLIC_SITE_URL || "https://tip-vault-production.up.railway.app";
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -67,7 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
-        // Handle refresh token errors - clear and start fresh
         if (error) {
           console.log("Auth error, clearing session:", error.message);
           await supabase.auth.signOut();
@@ -90,7 +97,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error("Error initializing auth:", err);
-        // Clear on any auth error
         await supabase.auth.signOut();
         if (mounted) {
           setSession(null);
@@ -112,7 +118,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         console.log("Auth event:", event);
 
-        // Handle token refresh errors
         if (event === "TOKEN_REFRESHED" && !session) {
           console.log("Token refresh failed, clearing session");
           setSession(null);
@@ -126,11 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // For Google auth, create profile if it doesn't exist
           const existingProfile = await fetchProfile(session.user.id);
           
           if (!existingProfile && event === "SIGNED_IN") {
-            // Create profile for new Google user
             const { error } = await supabase.from("profiles").insert({
               id: session.user.id,
               email: session.user.email!,
@@ -160,6 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
+      const baseUrl = getBaseUrl();
+      
       const { data, error } = await supabase.auth.signUp({
         email: email.toLowerCase().trim(),
         password,
@@ -167,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             full_name: fullName.trim(),
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${baseUrl}/auth/callback`,
         },
       });
 
@@ -220,10 +225,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
+      const baseUrl = getBaseUrl();
+      console.log("Google OAuth redirectTo:", `${baseUrl}/auth/callback`);
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${baseUrl}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
 
@@ -235,8 +247,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
+      const baseUrl = getBaseUrl();
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+        redirectTo: `${baseUrl}/auth/reset-password`,
       });
 
       return { error };
@@ -254,7 +268,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.push("/");
     } catch (err) {
       console.error("Error signing out:", err);
-      // Force clear anyway
       setUser(null);
       setProfile(null);
       setSession(null);
@@ -262,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const isVip = true; // Everyone has VIP access during launch
+  const isVip = true;
   const isAdmin = profile?.account_type === "admin";
 
   return (
