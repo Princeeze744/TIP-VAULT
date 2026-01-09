@@ -26,16 +26,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const PRODUCTION_URL = "https://tip-vault-production.up.railway.app";
 
 const getRedirectUrl = () => {
-  // In production, always use production URL
+  // Always use environment variable if available
+  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_SITE_URL) {
+    return `${process.env.NEXT_PUBLIC_SITE_URL}/login`;
+  }
+  
+  // In production, use production URL
   if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return `${window.location.origin}/auth/callback`;
+    return `${window.location.origin}/login`;
   }
-  // For local development, use localhost
+  
+  // For local development
   if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/callback`;
+    return `${window.location.origin}/login`;
   }
+  
   // Fallback to production
-  return `${PRODUCTION_URL}/auth/callback`;
+  return `${PRODUCTION_URL}/login`;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
