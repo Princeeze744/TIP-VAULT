@@ -31,7 +31,6 @@ export default function AdminDashboard() {
     setMounted(true);
   }, []);
 
-  // Auth check
   useEffect(() => {
     if (!authLoading && mounted) {
       if (!user) {
@@ -42,12 +41,11 @@ export default function AdminDashboard() {
     }
   }, [authLoading, mounted, user, profile, router]);
 
-  // Fetch tips - optimized
   const fetchTips = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("tips")
-        .select(`*, matches (*)`)
+        .select("*, matches (*)")
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -61,7 +59,6 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  // Load tips when ready
   useEffect(() => {
     if (mounted && user && profile?.account_type === "admin") {
       fetchTips();
@@ -73,114 +70,110 @@ export default function AdminDashboard() {
     await fetchTips();
   };
 
-  // FIXED: Immediately update UI after adding tip
-  const handleAddTip = async (data: any) => {
-    try {
-      const { data: tipData, error: tipError } = await supabase
-        .from("tips")
-        .insert({
-          sport: data.sport,
-          odds_tier: data.oddsTier,
-          ticket_number: data.ticketNumber,
-          total_odds: parseFloat(data.oddsTier === "20+" ? "20" : data.oddsTier), // Use tier odds
-          status: "pending",
-          is_vip_only: false,
-        })
-        .select()
-        .single();
+  // OPTIMIZED: Fast tip creation with immediate UI update
+  const handleAddTip = async (data: any): Promise<void> => {
+    const tierOddsValue = data.oddsTier === "20+" ? 20 : parseFloat(data.oddsTier);
+    
+    // Insert tip
+    const { data: tipData, error: tipError } = await supabase
+      .from("tips")
+      .insert({
+        sport: data.sport,
+        odds_tier: data.oddsTier,
+        ticket_number: data.ticketNumber,
+        total_odds: tierOddsValue,
+        status: "pending",
+        is_vip_only: false,
+      })
+      .select()
+      .single();
 
-      if (tipError) throw tipError;
+    if (tipError) throw tipError;
 
-      const matchesData = data.matches.map((match: any) => ({
-        tip_id: tipData.id,
-        home_team: match.home,
-        away_team: match.away,
-        league: match.league,
-        match_time: match.time,
-        tip: match.tip,
-        odds: parseFloat(match.odds) || 1,
-      }));
+    // Insert matches
+    const matchesData = data.matches.map((match: any) => ({
+      tip_id: tipData.id,
+      home_team: match.home,
+      away_team: match.away,
+      league: match.league,
+      match_time: match.time,
+      tip: match.tip,
+      odds: parseFloat(match.odds) || 1,
+    }));
 
-      const { data: insertedMatches, error: matchError } = await supabase
-        .from("matches")
-        .insert(matchesData)
-        .select();
+    const { data: insertedMatches, error: matchError } = await supabase
+      .from("matches")
+      .insert(matchesData)
+      .select();
 
-      if (matchError) throw matchError;
+    if (matchError) throw matchError;
 
-      // FIXED: Immediately add to local state (no refetch delay)
-      const newTip = { ...tipData, matches: insertedMatches || [] };
-      setTips(prev => [newTip, ...prev]);
-      
-      setIsModalOpen(false);
-      setEditingTip(null);
-    } catch (err) {
-      console.error("Error adding tip:", err);
-      alert("Failed to add tip. Please try again.");
-    }
+    // Immediately update UI
+    const newTip = { ...tipData, matches: insertedMatches || [] };
+    setTips(prev => [newTip, ...prev]);
+    setEditingTip(null);
   };
 
-  // NEW: Edit tip handler
-  const handleEditTip = async (data: any) => {
+  // OPTIMIZED: Fast tip edit with immediate UI update
+  const handleEditTip = async (data: any): Promise<void> => {
     if (!editingTip) return;
     
-    try {
-      // Update tip
-      const { error: tipError } = await supabase
-        .from("tips")
-        .update({
-          sport: data.sport,
-          odds_tier: data.oddsTier,
-          ticket_number: data.ticketNumber,
-          total_odds: parseFloat(data.oddsTier === "20+" ? "20" : data.oddsTier),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", editingTip.id);
+    const tierOddsValue = data.oddsTier === "20+" ? 20 : parseFloat(data.oddsTier);
+    
+    // Update tip
+    const { error: tipError } = await supabase
+      .from("tips")
+      .update({
+        sport: data.sport,
+        odds_tier: data.oddsTier,
+        ticket_number: data.ticketNumber,
+        total_odds: tierOddsValue,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingTip.id);
 
-      if (tipError) throw tipError;
+    if (tipError) throw tipError;
 
-      // Delete old matches
-      await supabase.from("matches").delete().eq("tip_id", editingTip.id);
+    // Delete old matches and insert new ones
+    await supabase.from("matches").delete().eq("tip_id", editingTip.id);
 
-      // Insert new matches
-      const matchesData = data.matches.map((match: any) => ({
-        tip_id: editingTip.id,
-        home_team: match.home,
-        away_team: match.away,
-        league: match.league,
-        match_time: match.time,
-        tip: match.tip,
-        odds: parseFloat(match.odds) || 1,
-      }));
+    const matchesData = data.matches.map((match: any) => ({
+      tip_id: editingTip.id,
+      home_team: match.home,
+      away_team: match.away,
+      league: match.league,
+      match_time: match.time,
+      tip: match.tip,
+      odds: parseFloat(match.odds) || 1,
+    }));
 
-      const { data: insertedMatches } = await supabase
-        .from("matches")
-        .insert(matchesData)
-        .select();
+    const { data: insertedMatches } = await supabase
+      .from("matches")
+      .insert(matchesData)
+      .select();
 
-      // Update local state immediately
-      setTips(prev => prev.map(tip => 
-        tip.id === editingTip.id 
-          ? { 
-              ...tip, 
-              sport: data.sport,
-              odds_tier: data.oddsTier,
-              ticket_number: data.ticketNumber,
-              total_odds: parseFloat(data.oddsTier === "20+" ? "20" : data.oddsTier),
-              matches: insertedMatches || []
-            } 
-          : tip
-      ));
-      
-      setIsModalOpen(false);
-      setEditingTip(null);
-    } catch (err) {
-      console.error("Error updating tip:", err);
-      alert("Failed to update tip. Please try again.");
-    }
+    // Immediately update UI
+    setTips(prev => prev.map(tip => 
+      tip.id === editingTip.id 
+        ? { 
+            ...tip, 
+            sport: data.sport,
+            odds_tier: data.oddsTier,
+            ticket_number: data.ticketNumber,
+            total_odds: tierOddsValue,
+            matches: insertedMatches || []
+          } 
+        : tip
+    ));
+    setEditingTip(null);
   };
 
   const handleUpdateStatus = async (tipId: string, status: "won" | "lost" | "pending") => {
+    // Optimistic update - update UI immediately
+    setTips(prev => prev.map(tip => 
+      tip.id === tipId ? { ...tip, status } : tip
+    ));
+    
     setUpdatingStatus(tipId);
     try {
       const { error } = await supabase
@@ -188,12 +181,11 @@ export default function AdminDashboard() {
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", tipId);
 
-      if (error) throw error;
-      
-      // Update local state immediately
-      setTips(prev => prev.map(tip => 
-        tip.id === tipId ? { ...tip, status } : tip
-      ));
+      if (error) {
+        // Revert on error
+        fetchTips();
+        throw error;
+      }
     } catch (err) {
       console.error("Error updating status:", err);
     } finally {
@@ -202,15 +194,18 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteTip = async (tipId: string) => {
-    if (!confirm("Are you sure? This will permanently delete this tip.")) return;
+    if (!confirm("Delete this tip?")) return;
+    
+    // Optimistic update
+    setTips(prev => prev.filter(tip => tip.id !== tipId));
     
     setDeletingTip(tipId);
     try {
       const { error } = await supabase.from("tips").delete().eq("id", tipId);
-      if (error) throw error;
-      
-      // Update local state immediately
-      setTips(prev => prev.filter(tip => tip.id !== tipId));
+      if (error) {
+        fetchTips(); // Revert on error
+        throw error;
+      }
     } catch (err) {
       console.error("Error deleting tip:", err);
     } finally {
@@ -223,7 +218,11 @@ export default function AdminDashboard() {
     setIsModalOpen(true);
   };
 
-  // Loading state
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingTip(null);
+  };
+
   if (!mounted || authLoading) {
     return (
       <div className="min-h-screen bg-vault-black flex items-center justify-center">
@@ -232,7 +231,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // Not authorized
   if (!user || profile?.account_type !== "admin") {
     return (
       <div className="min-h-screen bg-vault-black flex items-center justify-center">
@@ -248,7 +246,7 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">Admin Dashboard</h1>
           <p className="text-platinum/60 mt-1" suppressHydrationWarning>
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </p>
         </div>
 
@@ -270,7 +268,7 @@ export default function AdminDashboard() {
             className="btn-primary flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            <span className="hidden sm:inline">Add New Tip</span>
+            <span className="hidden sm:inline">Add Tip</span>
             <span className="sm:hidden">Add</span>
           </button>
         </div>
@@ -285,8 +283,8 @@ export default function AdminDashboard() {
       <div className="glass-card overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-vault-border">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-display font-semibold text-white">All Tips</h2>
-            <span className="text-xs text-gold bg-gold/10 px-2 py-1 rounded-full">{tips.length} Total</span>
+            <h2 className="text-lg font-display font-semibold text-white">Tips</h2>
+            <span className="text-xs text-gold bg-gold/10 px-2 py-1 rounded-full">{tips.length}</span>
           </div>
         </div>
 
@@ -298,7 +296,7 @@ export default function AdminDashboard() {
           <div className="text-center py-20">
             <p className="text-platinum/60 mb-4">No tips yet.</p>
             <button onClick={() => setIsModalOpen(true)} className="btn-primary">
-              Add Your First Tip
+              Add First Tip
             </button>
           </div>
         ) : (
@@ -310,7 +308,6 @@ export default function AdminDashboard() {
 
               return (
                 <div key={tip.id} className="hover:bg-vault-grey/20 transition-colors">
-                  {/* Main Row */}
                   <div className="p-4 sm:p-5">
                     <div className="flex items-start sm:items-center justify-between gap-4">
                       <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
@@ -320,12 +317,10 @@ export default function AdminDashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-white font-medium">
-                              {tip.sport.charAt(0).toUpperCase() + tip.sport.slice(1)}
+                              {tip.sport === "football" ? "⚽" : "🏀"} {tip.sport.charAt(0).toUpperCase() + tip.sport.slice(1)}
                             </p>
-                            <span className="text-platinum/40">•</span>
-                            <span className="text-gold font-mono">{tip.odds_tier} Odds</span>
-                            <span className="text-platinum/40 hidden sm:inline">•</span>
-                            <span className="text-platinum/60 hidden sm:inline">Ticket #{tip.ticket_number}</span>
+                            <span className="text-gold font-mono">{tip.odds_tier}</span>
+                            <span className="text-platinum/60 text-sm">#{tip.ticket_number}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-platinum/50 text-xs" suppressHydrationWarning>
@@ -333,80 +328,64 @@ export default function AdminDashboard() {
                                 month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" 
                               })}
                             </span>
-                            <span className="text-gold font-mono text-sm">
-                              {tip.matches?.length || 0} matches
+                            <span className="text-platinum/40">•</span>
+                            <span className="text-gold/70 text-xs">
+                              {tip.matches?.length || 0} games
                             </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {updatingStatus === tip.id ? (
                           <Loader2 className="w-5 h-5 text-gold animate-spin" />
                         ) : (
                           <>
                             <button
                               onClick={() => handleUpdateStatus(tip.id, "won")}
-                              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                                tip.status === "won" 
-                                  ? "bg-status-win text-white" 
-                                  : "bg-status-win/10 text-status-win hover:bg-status-win/20"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                tip.status === "won" ? "bg-status-win text-white" : "bg-status-win/10 text-status-win hover:bg-status-win/20"
                               }`}
-                              title="Mark as Won"
                             >
                               <CheckCircle className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleUpdateStatus(tip.id, "lost")}
-                              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                                tip.status === "lost" 
-                                  ? "bg-status-loss text-white" 
-                                  : "bg-status-loss/10 text-status-loss hover:bg-status-loss/20"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                tip.status === "lost" ? "bg-status-loss text-white" : "bg-status-loss/10 text-status-loss hover:bg-status-loss/20"
                               }`}
-                              title="Mark as Lost"
                             >
                               <XCircle className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleUpdateStatus(tip.id, "pending")}
-                              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                                tip.status === "pending" 
-                                  ? "bg-status-pending text-white" 
-                                  : "bg-status-pending/10 text-status-pending hover:bg-status-pending/20"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                tip.status === "pending" ? "bg-status-pending text-white" : "bg-status-pending/10 text-status-pending hover:bg-status-pending/20"
                               }`}
-                              title="Mark as Pending"
                             >
                               <Clock className="w-4 h-4" />
                             </button>
                           </>
                         )}
 
-                        {/* EDIT BUTTON */}
                         <button
                           onClick={() => openEditModal(tip)}
-                          className="p-1.5 sm:p-2 rounded-lg bg-gold/10 text-gold hover:bg-gold/20 transition-colors"
-                          title="Edit Tip"
+                          className="p-1.5 rounded-lg bg-gold/10 text-gold hover:bg-gold/20 transition-colors"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
 
                         <button
                           onClick={() => handleDeleteTip(tip.id)}
-                          disabled={deletingTip === tip.id}
-                          className="p-1.5 sm:p-2 rounded-lg bg-status-loss/10 text-status-loss hover:bg-status-loss/20 transition-colors disabled:opacity-50"
-                          title="Delete Tip"
+                          className="p-1.5 rounded-lg bg-status-loss/10 text-status-loss hover:bg-status-loss/20 transition-colors"
                         >
-                          {deletingTip === tip.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
+                          <Trash2 className="w-4 h-4" />
                         </button>
 
                         <button
                           onClick={() => setExpandedTip(isExpanded ? null : tip.id)}
-                          className="p-1.5 sm:p-2 rounded-lg bg-vault-grey/50 hover:bg-vault-grey transition-colors"
+                          className="p-1.5 rounded-lg bg-vault-grey/50 hover:bg-vault-grey transition-colors"
                         >
                           <ChevronDown className={`w-4 h-4 text-platinum transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         </button>
@@ -417,8 +396,7 @@ export default function AdminDashboard() {
                   {/* Expanded Matches */}
                   {isExpanded && tip.matches && (
                     <div className="px-4 sm:px-5 pb-4 sm:pb-5">
-                      <div className="bg-vault-grey/30 rounded-xl p-4 space-y-3">
-                        <p className="text-platinum/60 text-sm font-medium">Matches ({tip.matches.length})</p>
+                      <div className="bg-vault-grey/30 rounded-xl p-4 space-y-2">
                         {tip.matches.map((match) => (
                           <div
                             key={match.id}
@@ -432,10 +410,7 @@ export default function AdminDashboard() {
                                 {match.league} • {match.match_time}
                               </p>
                             </div>
-                            <div className="text-right">
-                              <p className="text-gold text-sm font-medium">{match.tip}</p>
-                              <p className="text-platinum/50 text-xs">@ {match.odds}</p>
-                            </div>
+                            <span className="text-gold text-sm font-medium">{match.tip}</span>
                           </div>
                         ))}
                       </div>
@@ -450,10 +425,7 @@ export default function AdminDashboard() {
 
       <AddTipModal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingTip(null);
-        }}
+        onClose={closeModal}
         onSubmit={editingTip ? handleEditTip : handleAddTip}
         editData={editingTip}
       />
