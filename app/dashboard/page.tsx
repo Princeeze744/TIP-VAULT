@@ -26,7 +26,6 @@ export default function DashboardPage() {
     setMounted(true);
   }, []);
 
-  // Auth redirect
   useEffect(() => {
     if (!authLoading && mounted) {
       if (!user) {
@@ -37,7 +36,6 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, isAdmin, router, mounted]);
 
-  // Fetch tips function
   const fetchTips = useCallback(async (showLoader = false) => {
     if (!user || isAdmin) {
       setLoading(false);
@@ -74,14 +72,12 @@ export default function DashboardPage() {
     }
   }, [user, isAdmin, activeTab, selectedDate]);
 
-  // Initial load - only once when ready
   useEffect(() => {
     if (mounted && user && !isAdmin && !authLoading) {
       fetchTips(true);
     }
   }, [mounted, user, isAdmin, authLoading]);
 
-  // Fetch when tab or date changes (without full page loader)
   useEffect(() => {
     if (initialLoadDone && user && !isAdmin) {
       fetchTips(false);
@@ -108,12 +104,10 @@ export default function DashboardPage() {
   };
 
   const isToday = getDateString(selectedDate) === getDateString(new Date());
-
   const wonTips = tips.filter((t) => t.status === "won").length;
   const pendingTips = tips.filter((t) => t.status === "pending").length;
   const lostTips = tips.filter((t) => t.status === "lost").length;
 
-  // Only show full page loader during initial auth check
   if (!mounted || (authLoading && !initialLoadDone)) {
     return (
       <div className="min-h-screen bg-vault-black flex items-center justify-center">
@@ -122,7 +116,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Redirect states - show loader briefly
   if (!user || isAdmin) {
     return (
       <div className="min-h-screen bg-vault-black flex items-center justify-center">
@@ -151,6 +144,18 @@ export default function DashboardPage() {
     if (oddsTier.includes("10.50")) return "diamond";
     return "crown";
   };
+
+  const TelegramButton = () => (
+    <a
+      href={TELEGRAM_LINK}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm"
+    >
+      <Send className="w-4 h-4" />
+      <span>Join Telegram</span>
+    </a>
+  );
 
   return (
     <div className="min-h-screen bg-vault-black">
@@ -222,21 +227,20 @@ export default function DashboardPage() {
                 <div className="h-4 w-px bg-gold/30 hidden sm:block" />
                 <div className="flex items-center gap-4 text-sm text-platinum/60">
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-status-win"></span>
+                    <span className="w-2 h-2 rounded-full bg-status-win" />
                     {wonTips} Won
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-status-pending"></span>
+                    <span className="w-2 h-2 rounded-full bg-status-pending" />
                     {pendingTips} Pending
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-status-loss"></span>
+                    <span className="w-2 h-2 rounded-full bg-status-loss" />
                     {lostTips} Lost
                   </span>
                 </div>
               </div>
 
-              {/* FIXED: Show proper states */}
               {loading && !initialLoadDone ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-8 h-8 text-gold animate-spin" />
@@ -298,15 +302,7 @@ export default function DashboardPage() {
               <div className="glass-card-gold p-5 text-center">
                 <p className="text-white font-semibold mb-2">Join Our Community</p>
                 <p className="text-platinum/60 text-sm mb-4">Get instant notifications</p>
-                
-                  href={TELEGRAM_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm"
-                >
-                  <Send className="w-4 h-4" />
-                  Join Telegram
-                </a>
+                <TelegramButton />
               </div>
             </div>
           </div>
