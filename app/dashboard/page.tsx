@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<"football" | "basketball">("football");
   const [tips, setTips] = useState<(Tip & { matches: Match[] })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -25,6 +26,7 @@ export default function DashboardPage() {
     setMounted(true);
   }, []);
 
+  // Auth redirect
   useEffect(() => {
     if (!authLoading && mounted) {
       if (!user) {
@@ -35,8 +37,15 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, isAdmin, router, mounted]);
 
-  const fetchTips = useCallback(async () => {
-    if (!user || isAdmin) return;
+  // Fetch tips function
+  const fetchTips = useCallback(async (showLoader = false) => {
+    if (!user || isAdmin) {
+      setLoading(false);
+      setInitialLoadDone(true);
+      return;
+    }
+    
+    if (showLoader) setLoading(true);
     
     try {
       const startOfDay = new Date(selectedDate);
@@ -56,23 +65,32 @@ export default function DashboardPage() {
       if (error) throw error;
       setTips(data || []);
     } catch (err) {
-      console.error("Error:", err);
+      console.error("Error fetching tips:", err);
+      setTips([]);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
+      setInitialLoadDone(true);
     }
   }, [user, isAdmin, activeTab, selectedDate]);
 
+  // Initial load - only once when ready
   useEffect(() => {
-    if (mounted && user && !isAdmin) {
-      setLoading(true);
-      fetchTips();
+    if (mounted && user && !isAdmin && !authLoading) {
+      fetchTips(true);
     }
-  }, [mounted, user, isAdmin, fetchTips]);
+  }, [mounted, user, isAdmin, authLoading]);
+
+  // Fetch when tab or date changes (without full page loader)
+  useEffect(() => {
+    if (initialLoadDone && user && !isAdmin) {
+      fetchTips(false);
+    }
+  }, [activeTab, selectedDate]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchTips();
+    fetchTips(false);
   };
 
   const goToPreviousDay = () => {
@@ -95,7 +113,17 @@ export default function DashboardPage() {
   const pendingTips = tips.filter((t) => t.status === "pending").length;
   const lostTips = tips.filter((t) => t.status === "lost").length;
 
-  if (!mounted || authLoading || !user || isAdmin) {
+  // Only show full page loader during initial auth check
+  if (!mounted || (authLoading && !initialLoadDone)) {
+    return (
+      <div className="min-h-screen bg-vault-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-gold animate-spin" />
+      </div>
+    );
+  }
+
+  // Redirect states - show loader briefly
+  if (!user || isAdmin) {
     return (
       <div className="min-h-screen bg-vault-black flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-gold animate-spin" />
@@ -123,18 +151,6 @@ export default function DashboardPage() {
     if (oddsTier.includes("10.50")) return "diamond";
     return "crown";
   };
-
-  const telegramButton = (
-    <a
-      href={TELEGRAM_LINK}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm"
-    >
-      <Send className="w-4 h-4" />
-      Join Telegram
-    </a>
-  );
 
   return (
     <div className="min-h-screen bg-vault-black">
@@ -186,9 +202,9 @@ export default function DashboardPage() {
               <button
                 onClick={handleRefresh}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-vault-grey border border-vault-border hover:border-gold/30 transition-all text-sm"
-                disabled={isRefreshing}
+                disabled={isRefreshing || loading}
               >
-                <RefreshCw className={"w-4 h-4 text-platinum " + (isRefreshing ? "animate-spin" : "")} />
+                <RefreshCw className={`w-4 h-4 text-platinum ${isRefreshing ? "animate-spin" : ""}`} />
                 <span className="text-platinum hidden sm:inline">Refresh</span>
               </button>
             </div>
@@ -220,14 +236,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {loading ? (
+              {/* FIXED: Show proper states */}
+              {loading && !initialLoadDone ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-8 h-8 text-gold animate-spin" />
                 </div>
               ) : tips.length === 0 ? (
-                <div className="text-center py-20">
-                  <p className="text-platinum/60 mb-2">No tips for {activeTab} on this date.</p>
-                  <p className="text-platinum/40 text-sm">Try a different date or sport.</p>
+                <div className="text-center py-20 glass-card">
+                  <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center mx-auto mb-4">
+                    <Calendar className="w-8 h-8 text-gold/50" />
+                  </div>
+                  <p className="text-platinum/60 mb-2 text-lg">No {activeTab} tips for this date</p>
+                  <p className="text-platinum/40 text-sm">Check back later or try a different date</p>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
@@ -269,7 +289,7 @@ export default function DashboardPage() {
                   <div className="w-full h-2 bg-vault-grey rounded-full overflow-hidden">
                     <div
                       className="h-full bg-status-win rounded-full transition-all duration-500"
-                      style={{ width: (tips.length > 0 ? (wonTips / (wonTips + lostTips || 1)) * 100 : 0) + "%" }}
+                      style={{ width: `${tips.length > 0 ? (wonTips / (wonTips + lostTips || 1)) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -278,7 +298,15 @@ export default function DashboardPage() {
               <div className="glass-card-gold p-5 text-center">
                 <p className="text-white font-semibold mb-2">Join Our Community</p>
                 <p className="text-platinum/60 text-sm mb-4">Get instant notifications</p>
-                {telegramButton}
+                
+                  href={TELEGRAM_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  Join Telegram
+                </a>
               </div>
             </div>
           </div>
