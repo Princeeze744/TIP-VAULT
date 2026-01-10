@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Plus, Trash2, Loader2, CheckCircle } from "lucide-react";
+import { X, Plus, Trash2, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { Tip, Match } from "@/lib/supabase";
 
 interface MatchInput {
@@ -16,7 +16,7 @@ interface MatchInput {
 interface AddTipModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => Promise<void>;
   editData?: (Tip & { matches: Match[] }) | null;
 }
 
@@ -42,6 +42,7 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
   ]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   // Populate form when editing
   useEffect(() => {
@@ -66,6 +67,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
       setTicketNumber("1");
       setMatches([{ home: "", away: "", league: "", time: "", tip: "", odds: "" }]);
     }
+    setError("");
+    setSuccess(false);
   }, [editData, isOpen]);
 
   const addMatch = () => {
@@ -85,31 +88,41 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
 
     const tipData = {
       sport,
       oddsTier,
       ticketNumber: parseInt(ticketNumber),
       matches,
-      // FIXED: Use tier odds directly, not calculated
       totalOdds: oddsTier === "20+" ? "20" : oddsTier,
       status: "pending",
     };
 
     try {
-      await onSubmit(tipData);
-      setSuccess(true);
+      // FIXED: Add timeout to prevent infinite hang
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Request timed out")), 15000)
+      );
       
+      await Promise.race([onSubmit(tipData), timeoutPromise]);
+      
+      setSuccess(true);
+      setLoading(false);
+
+      // Auto-close after success
       setTimeout(() => {
+        onClose();
         setSuccess(false);
-        setLoading(false);
         // Reset form
         setMatches([{ home: "", away: "", league: "", time: "", tip: "", odds: "" }]);
         setSport("football");
         setOddsTier("2.50");
         setTicketNumber("1");
-      }, 1000);
-    } catch (err) {
+      }, 1500);
+    } catch (err: any) {
+      console.error("Submit error:", err);
+      setError(err?.message || "Failed to save tip. Please try again.");
       setLoading(false);
     }
   };
@@ -134,6 +147,7 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-vault-grey/50 transition-colors"
+            disabled={loading}
           >
             <X className="w-5 h-5 text-platinum/60" />
           </button>
@@ -152,6 +166,17 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="p-4 rounded-xl bg-status-loss/10 border border-status-loss/30 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-status-loss flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-status-loss text-sm font-medium">Error</p>
+                  <p className="text-status-loss/80 text-sm mt-1">{error}</p>
+                </div>
+              </div>
+            )}
+
             {/* Sport & Odds Tier */}
             <div className="grid sm:grid-cols-3 gap-4">
               <div>
@@ -160,6 +185,7 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                   value={sport}
                   onChange={(e) => setSport(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-vault-grey/50 border border-vault-border text-white focus:border-gold/50 focus:outline-none transition-colors"
+                  disabled={loading}
                 >
                   {sportOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -175,6 +201,7 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                   value={oddsTier}
                   onChange={(e) => setOddsTier(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-vault-grey/50 border border-vault-border text-white focus:border-gold/50 focus:outline-none transition-colors"
+                  disabled={loading}
                 >
                   {oddsOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -190,6 +217,7 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                   value={ticketNumber}
                   onChange={(e) => setTicketNumber(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-vault-grey/50 border border-vault-border text-white focus:border-gold/50 focus:outline-none transition-colors"
+                  disabled={loading}
                 >
                   <option value="1">Ticket 1</option>
                   <option value="2">Ticket 2</option>
@@ -211,7 +239,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                 <button
                   type="button"
                   onClick={addMatch}
-                  className="flex items-center gap-1 text-sm text-gold hover:text-gold-200 transition-colors"
+                  className="flex items-center gap-1 text-sm text-gold hover:text-gold-200 transition-colors disabled:opacity-50"
+                  disabled={loading}
                 >
                   <Plus className="w-4 h-4" />
                   Add Match
@@ -229,7 +258,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                       <button
                         type="button"
                         onClick={() => removeMatch(index)}
-                        className="p-1 rounded hover:bg-status-loss/10 transition-colors"
+                        className="p-1 rounded hover:bg-status-loss/10 transition-colors disabled:opacity-50"
+                        disabled={loading}
                       >
                         <Trash2 className="w-4 h-4 text-status-loss" />
                       </button>
@@ -242,7 +272,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                       placeholder="Home Team"
                       value={match.home}
                       onChange={(e) => updateMatch(index, "home", e.target.value)}
-                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none"
+                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
+                      disabled={loading}
                       required
                     />
                     <input
@@ -250,7 +281,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                       placeholder="Away Team"
                       value={match.away}
                       onChange={(e) => updateMatch(index, "away", e.target.value)}
-                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none"
+                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
+                      disabled={loading}
                       required
                     />
                   </div>
@@ -261,7 +293,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                       placeholder="League"
                       value={match.league}
                       onChange={(e) => updateMatch(index, "league", e.target.value)}
-                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none"
+                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
+                      disabled={loading}
                       required
                     />
                     <input
@@ -269,7 +302,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                       placeholder="Time (e.g., 15:00)"
                       value={match.time}
                       onChange={(e) => updateMatch(index, "time", e.target.value)}
-                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none"
+                      className="px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
+                      disabled={loading}
                       required
                     />
                   </div>
@@ -279,7 +313,8 @@ export default function AddTipModal({ isOpen, onClose, onSubmit, editData }: Add
                     placeholder="Tip (e.g., Over 1.5 Goals, BTTS, Home Win)"
                     value={match.tip}
                     onChange={(e) => updateMatch(index, "tip", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg bg-vault-obsidian border border-vault-border text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
+                    disabled={loading}
                     required
                   />
                 </div>
